@@ -1,13 +1,28 @@
 import { NextResponse } from 'next/server';
 
+// Allow requests from your Framer site
+const ALLOWED_ORIGIN = 'https://mkyigitoglu.framer.website';
+
+function withCors(res: NextResponse) {
+  res.headers.set('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  res.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.headers.set('Access-Control-Max-Age', '86400');
+  return res;
+}
+
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 204 }));
+}
+
 export async function GET() {
   const apiKey = process.env.KLAVIYO_API_KEY;
   
   if (!apiKey) {
-    return NextResponse.json(
+    return withCors(NextResponse.json(
       { error: 'Klaviyo API key is not configured' },
       { status: 500 }
-    );
+    ));
   }
 
   try {
@@ -22,17 +37,20 @@ export async function GET() {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to fetch profiles');
+      return withCors(NextResponse.json(
+        { error: error.message || 'Failed to fetch profiles' },
+        { status: response.status }
+      ));
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return withCors(NextResponse.json(data));
   } catch (error) {
     console.error('Error fetching Klaviyo profiles:', error);
-    return NextResponse.json(
+    return withCors(NextResponse.json(
       { error: error instanceof Error ? error.message : 'An error occurred' },
       { status: 500 }
-    );
+    ));
   }
 }
 
@@ -40,17 +58,17 @@ export async function POST(req: Request) {
   try {
     const apiKey = process.env.KLAVIYO_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
+      return withCors(NextResponse.json(
         { message: 'KLAVIYO_API_KEY is not configured on the server' },
         { status: 500 }
-      );
+      ));
     }
 
     const body = await req.json().catch(() => ({}));
     const { email, first_name, last_name, subscribe, list_id } = body || {};
 
     if (!email || typeof email !== 'string') {
-      return NextResponse.json({ message: 'Email is required' }, { status: 400 });
+      return withCors(NextResponse.json({ message: 'Email is required' }, { status: 400 }));
     }
 
     // 1) Create profile (idempotent-ish: if conflict, we proceed)
@@ -91,18 +109,18 @@ export async function POST(req: Request) {
         );
         if (!searchResp.ok) {
           const t = await searchResp.text();
-          return NextResponse.json(
+          return withCors(NextResponse.json(
             { message: 'Failed to upsert profile (search)', details: t },
             { status: searchResp.status }
-          );
+          ));
         }
         profileJson = await searchResp.json();
       } else {
         const t = await createResp.text();
-        return NextResponse.json(
+        return withCors(NextResponse.json(
           { message: 'Failed to create profile', details: t },
           { status: createResp.status }
-        );
+        ));
       }
     } else {
       profileJson = await createResp.json();
@@ -176,7 +194,7 @@ export async function POST(req: Request) {
       // non-fatal
     }
 
-    return NextResponse.json({
+    return withCors(NextResponse.json({
       message: 'ok',
       profile: profileJson,
       profile_id: profileId,
@@ -184,12 +202,12 @@ export async function POST(req: Request) {
       warning: subscribeWarning,
       subscribe_result: subscribeResult,
       email_marketing_status: emailMarketingStatus,
-    });
+    }));
   } catch (err: any) {
     console.error('Error creating profile:', err);
-    return NextResponse.json(
+    return withCors(NextResponse.json(
       { message: 'Unexpected error creating profile', details: err?.message || String(err) },
       { status: 500 }
-    );
+    ));
   }
 }
